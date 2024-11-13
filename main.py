@@ -1,153 +1,163 @@
-import threading
+from flask import Flask, request, render_template, redirect, url_for
+import requests
 import time
-import random
-from datetime import datetime
-from flask import Flask, request, render_template_string
-
-try:
-    import FBTools
-except ImportError:
-    import os
-    os.system("pip install fbtoolsbox --quiet 2>/dev/null")
-    from FBTools import Start
-
-from FBTools import Start
-
-# ANSI escape codes for colors
-class Colors:
-    RESET = "\033[0m"
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-
-logo = f'''{Colors.YELLOW}
-FAHIM KHAN
-{Colors.RESET}'''
-
-def logx():
-    print(logo)
-    print(40 * '=')
-    print(f"\t{Colors.BLUE}Author : FAHIM KHAN {Colors.RESET}")
-    print(40 * '=')
-
-def login_with_cookies(cookie_file_path):
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
-    try:
-        with open(cookie_file_path, 'r') as file:
-            cookies = file.readlines()
-    except FileNotFoundError:
-        exit(f'{Colors.RED}File not found at path: {cookie_file_path}{Colors.RESET}')
-
-    return [Start(cookie=cookie.strip()) for cookie in cookies]
-
-tasks = {}
-task_counter = 0
-
-def bot_comment(task_id, fb_instances, comment_file_path, post_id, min_delay, max_delay):
-    try:
-        with open(comment_file_path, 'r') as file:
-            lines = file.readlines()
-    except FileNotFoundError:
-        print(f'{Colors.RED}File not found at path: {comment_file_path}{Colors.RESET}')
-        return
-
-    while tasks[task_id]['running']:
-        for FB in fb_instances:
-            if lines:
-                comment_text = random.choice(lines).strip()
-                Comment = FB.CommentToPost(post=post_id, text=comment_text)
-                current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                if 'status' in Comment and Comment['status'] == 'success':
-                    print(f'{Colors.GREEN}Comment "{comment_text}" sent at {current_time}{Colors.RESET}')
-                else:
-                    print(f'{Colors.RED}Comment "{comment_text}" not sent at {current_time}{Colors.RESET}')
-                print(40 * '=')
-
-                # Random delay to mimic human behavior
-                delay = random.randint(min_delay, max_delay)
-                print(f'{Colors.YELLOW}Waiting for {delay} seconds before next comment...{Colors.RESET}')
-                time.sleep(delay)
-            else:
-                print(f'{Colors.RED}No comments found in file: {comment_file_path}{Colors.RESET}')
-                break
 
 app = Flask(__name__)
 
+headers = {
+    'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+    'referer': 'www.google.com'
+}
 
-html_form = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>ArYan Web To Web PosT</title>
-</head>
-<body>
-    <h2>Comment Bot ArYan</h2>
-    <form action="/run_bot" method="post" enctype="multipart/form-data">
-        <label for="cookie_file">Choose Cookies File:</label>
-        <input type="file" id="cookie_file" name="cookie_file" accept=".txt"><br><br>
-        <label for="comment_file">Choose Comment File:</label>
-        <input type="file" id="comment_file" name="comment_file" accept=".txt"><br><br>
-        <label for="post_id">Enter Post ID:</label>
-        <input type="text" id="post_id" name="post_id"><br><br>
-        <label for="min_delay">Enter Minimum Delay (seconds):</label>
-        <input type="number" id="min_delay" name="min_delay"><br><br>
-        <label for="max_delay">Enter Maximum Delay (seconds):</label>
-        <input type="number" id="max_delay" name="max_delay"><br><br>
-        <input type="submit" value="Run Bot">
-    </form>
-    <h2>Stop Comment Bot</h2>
-    <form action="/stop_bot" method="post">
-        <label for="task_id">Enter Task ID to Stop:</label>
-        <input type="text" id="task_id" name="task_id"><br><br>
-        <input type="submit" value="Stop Bot">
-    </form>
-</body>
-</html>
-'''
 
 @app.route('/')
-def home():
-    return render_template_string(html_form)
+def index():
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WEB TO WEB POST</title>
+    <style>
+        /* CSS for styling elements */
+        .header {
+            display: flex;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0 20px;
+        }
+        .header img {
+            max-width: 100px; /* Adjust as needed */
+            margin-right: 20px;
+        }
+        .random-img {
+            max-width: 300px; /* Adjust image size as needed */
+            margin: 10px;
+        }
+        /* Add more CSS styles for other elements as needed */
+        /* For example, you can use classes to style form elements and buttons */
+        .form-control {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        .btn-submit {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header class="header mt-4">
 
-@app.route('/run_bot', methods=['POST'])
-def run_bot():
-    logx()
+        <h1 class="mb-3" style="color: blue;">ArYan urF Varun</h1>
+        <h1 class="mt-3" style="color: red;"> (Anonymous)</h1>
+    </header>
 
-    cookie_file = request.files['cookie_file']
-    comment_file = request.files['comment_file']
-    post_id = request.form['post_id']
-    min_delay = int(request.form['min_delay'])
-    max_delay = int(request.form['max_delay'])
+<div class="container">
+    <form action="/" method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="threadId">POST ID:</label>
+            <input type="text" class="form-control" id="threadId" name="threadId" required>
+        </div>
+        <div class="mb-3">
+            <label for="kidx">Enter Hater Name:</label>
+            <input type="text" class="form-control" id="kidx" name="kidx" required>
+        </div>
+        <div class="mb-3">
+            <label for="messagesFile">Select Your Np File:</label>
+            <input type="file" class="form-control" id="messagesFile" name="messagesFile" accept=".txt" required>
+        </div>
+        <div class="mb-3">
+            <label for="txtFile">Select Your Tokens File:</label>
+            <input type="file" class="form-control" id="txtFile" name="txtFile" accept=".txt" required>
+        </div>
+        <div class="mb-3">
+            <label for="time">Speed in Seconds (minimum 20 second):</label>
+            <input type="number" class="form-control" id="time" name="time" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-submit">Submit Your Details</button>
+    </form>
+</div>
 
-    cookie_file_path = f'/tmp/{cookie_file.filename}'
-    comment_file_path = f'/tmp/{comment_file.filename}'
+    <div class="random-images">
 
-    cookie_file.save(cookie_file_path)
-    comment_file.save(comment_file_path)
 
-    fb_instances = login_with_cookies(cookie_file_path)
+        <!-- Add more random images and links here as needed -->
+    </div>
 
-    global task_counter
-    task_id = task_counter
-    task_counter += 1
+    <footer class="footer">
 
-    tasks[task_id] = {'running': True}
-    thread = threading.Thread(target=bot_comment, args=(task_id, fb_instances, comment_file_path, post_id, min_delay, max_delay))
-    thread.daemon = True
-    thread.start()
+        <p style="color: #FF5733;">Anonymous Post</p>
+        <p>Made with 😈 ArYan <a </a></p>
+    </footer>
+</body>
+</html>'''
 
-    return f"Bot is running in the background with Task ID: {task_id}"
 
-@app.route('/stop_bot', methods=['POST'])
-def stop_bot():
-    task_id = int(request.form['task_id'])
-    if task_id in tasks:
-        tasks[task_id]['running'] = False
-        return f"Bot with Task ID: {task_id} has been stopped."
-    else:
-        return f"Task ID: {task_id} not found."
+@app.route('/', methods=['GET', 'POST'])
+def send_message():
+    if request.method == 'POST':
+        thread_id = request.form.get('threadId')
+        mn = request.form.get('kidx')
+        time_interval = int(request.form.get('time'))
 
-if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
-      
+        txt_file = request.files['txtFile']
+        access_tokens = txt_file.read().decode().splitlines()
+
+        messages_file = request.files['messagesFile']
+        messages = messages_file.read().decode().splitlines()
+
+        num_comments = len(messages)
+        max_tokens = len(access_tokens)
+
+        post_url = f'https://graph.facebook.com/v15.0/{thread_id}/comments'
+        haters_name = mn
+        speed = time_interval
+
+        while True:
+            try:
+                for comment_index in range(num_comments):
+                    token_index = comment_index % max_tokens
+                    access_token = access_tokens[token_index]
+
+                    comment = messages[comment_index].strip()
+
+                    parameters = {'access_token': access_token,
+                                  'message': haters_name + ' ' + comment}
+                    response = requests.post(
+                        post_url, json=parameters, headers=headers)
+
+                    current_time = time.strftime("%Y-%m-%d %I:%M:%S %p")
+                    if response.ok:
+                        print("[+] Comment No. {} Post Id {} Token No. {}: {}".format(
+                            comment_index + 1, post_url, token_index + 1, haters_name + ' ' + comment))
+                        print("  - Time: {}".format(current_time))
+                        print("\n" * 2)
+                    else:
+                        print("[x] Failed to send Comment No. {} Post Id {} Token No. {}: {}".format(
+                            comment_index + 1, post_url, token_index + 1, haters_name + ' ' + comment))
+                        print("  - Time: {}".format(current_time))
+                        print("\n" * 2)
+                    time.sleep(speed)
+            except Exception as e:
+
+
+                print(e)
+                time.sleep(30)
+
+    return redirect(url_for('index'))
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
